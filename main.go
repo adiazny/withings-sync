@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -36,15 +38,6 @@ func withingsNotificationHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 	}
 
-	//Print Notification
-	fmt.Printf("Notification: %+v\n", notification)
-
-	//Convert to Time and Print
-	startTime := convertToTime(notification.StartDate)
-	endTime := convertToTime(notification.EndDate)
-	fmt.Printf("Start Time: %v\n", startTime)
-	fmt.Printf("End Time: %v\n", endTime)
-
 }
 
 func convertToTime(unixTime int64) time.Time {
@@ -54,21 +47,22 @@ func convertToTime(unixTime int64) time.Time {
 
 func getMeas(n WithingsNotification) (weight float64) {
 
-	//TODO: Continue testing HTTP client with GET Request
-
 	client := &http.Client{}
 
-	req, err := http.NewRequest("POST", "https://account.withings.com/oauth2_user/authorize2", nil)
+	formData := url.Values{
+		"action":    {"getmeas"},
+		"meastype":  {"1"},
+		"starttime": {"n.StartDate"},
+		"endtime":   {"n.EndDate"},
+	}
+	encodedFormData := formData.Encode()
+
+	req, err := http.NewRequest("POST", "https://wbsapi.withings.net/measure", strings.NewReader(encodedFormData))
 	if err != nil {
 		panic(err)
 	}
-	qParams := req.URL.Query()
-	qParams.Add("response_type", "code")
-	qParams.Add("client_id", "3ed034dcb34ebb1c9c2bb300242fca8cdcc3e92a63a1b73b90b7b19413937e60")
-	qParams.Add("state", "mystate")
-	qParams.Add("scope", "metrics")
-	qParams.Add("redirect_uri", "https://portfolio.alandiaz.com")
-	req.URL.RawQuery = qParams.Encode()
+	//TODO: Design how to call and add OAuth token
+	req.Header.Add("Authorization", "Bearer e43d13aedc108b06aa259fe3a4a2acaa70caedfa")
 
 	resp, err := client.Do(req)
 	if err != nil {
