@@ -5,41 +5,43 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
 
-type WithingsNotification struct {
+type withingsNotification struct {
 	UserID    int   `json:"userid"`
 	Appli     int   `json:"appli"`
 	StartDate int64 `json:"startdate"`
 	EndDate   int64 `json:"enddate"`
 }
 
-type Measures struct {
+type measures struct {
 	Value int `json:"value"`
 	Type  int `json:"type"`
 	Unit  int `json:"unit"`
 }
 
-type MeasureGrps struct {
+type measureGrps struct {
 	Grpid    int        `json:"grpid"`
 	Created  int64      `json:"created"`
 	Category int        `json:"category"`
-	Measures []Measures `json:"measures"`
+	Measures []measures `json:"measures"`
 }
 
-type MeasureBody struct {
+type measureBody struct {
 	UpdateTime  int64         `json:"updatetime"`
 	TimeZone    string        `json:"timezone"`
-	MeasureGrps []MeasureGrps `json:"measuregrps"`
+	MeasureGrps []measureGrps `json:"measureGrps"`
 }
 
-type MeasureResponse struct {
+type measureResponse struct {
 	Status int         `json:"status"`
-	MB     MeasureBody `json:"body"`
+	MB     measureBody `json:"body"`
 }
 
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,11 +57,17 @@ func withingsNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Unmarshal
-	var notification WithingsNotification
+	var notification withingsNotification
 	err = json.Unmarshal(b, &notification)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 	}
+
+	weight := getMeas(notification)
+
+	fmt.Fprintf(w, "Weight: %v", weight)
+
+	fmt.Println("User Weight (kg):", weight)
 
 }
 
@@ -68,7 +76,7 @@ func convertToTime(unixTime int64) time.Time {
 	return time
 }
 
-func getMeas(n WithingsNotification) (weight float64) {
+func getMeas(n withingsNotification) (weight float64) {
 
 	client := &http.Client{}
 
@@ -85,7 +93,7 @@ func getMeas(n WithingsNotification) (weight float64) {
 		panic(err)
 	}
 	//TODO: Design how to call and add OAuth token
-	req.Header.Add("Authorization", "Bearer 0ff90340b36abcc09df998d1e287669b5f5c8b34")
+	req.Header.Add("Authorization", "Bearer a4df0711085010b47f25e6ade4820f54ed8f08e7")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -101,13 +109,23 @@ func getMeas(n WithingsNotification) (weight float64) {
 	fmt.Println("Response status:", resp.Status)
 
 	//var jsonData interface{}
-	var meas MeasureResponse
+	var meas measureResponse
 	json.Unmarshal(b, &meas)
 
-	fmt.Printf("Measurement %+v", meas)
+	measuresGrpsList := meas.MB.MeasureGrps
+	sort.Slice(measuresGrpsList, func(i, j int) bool {
+		return measuresGrpsList[i].Created > measuresGrpsList[j].Created
+	})
 
-	weight = 1.0
+	recentMeasures := measuresGrpsList[0].Measures[0]
+
+	weight = calculateWeight(recentMeasures)
 	return
+}
+
+func calculateWeight(m measures) (weight float64) {
+	// TODO: look up how to round to nearest tenth
+	return float64(m.Value) * math.Pow10(m.Unit)
 }
 
 func main() {
@@ -116,8 +134,6 @@ func main() {
 	http.HandleFunc("/about", aboutHandler)
 
 	http.HandleFunc("/weight", withingsNotificationHandler)
-
-	fmt.Println(getMeas(WithingsNotification{}))
 
 	log.Fatal(http.ListenAndServe(":8090", nil))
 
