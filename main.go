@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -50,25 +51,50 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func withingsNotificationHandler(w http.ResponseWriter, r *http.Request) {
-	//Read Body
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Fatal(err)
+
+	switch r.Method {
+	case "GET":
+		fmt.Fprintln(w, "Get Request Successful")
+	case "POST":
+		notification, err := handleNotificationRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+		weight := getMeas(notification)
+		fmt.Fprintf(w, "Weight: %v", weight)
+		fmt.Println("User Weight (kg):", weight)
+	default:
+		fmt.Fprintf(w, "Only GET, HEAD and POST allowed")
 	}
 
-	//Unmarshal
-	var notification withingsNotification
-	err = json.Unmarshal(b, &notification)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
+}
+
+func handleNotificationRequest(r *http.Request) (notification withingsNotification, jsonError error) {
+
+	//Parse Form params
+	r.ParseForm()
+	urlValues := r.Form
+
+	// Create WithingsNotification Struct from Form params
+	notification = notificationStruct(urlValues)
+	return
+
+}
+
+func notificationStruct(uv url.Values) (notification withingsNotification) {
+	for k, v := range uv {
+		switch k {
+		case "userid":
+			notification.UserID, _ = strconv.Atoi(v[0])
+		case "appli":
+			notification.Appli, _ = strconv.Atoi(v[0])
+		case "startdate":
+			notification.StartDate, _ = strconv.ParseInt(v[0], 10, 64)
+		case "enddate":
+			notification.EndDate, _ = strconv.ParseInt(v[0], 10, 64)
+		}
 	}
-
-	weight := getMeas(notification)
-
-	fmt.Fprintf(w, "Weight: %v", weight)
-
-	fmt.Println("User Weight (kg):", weight)
-
+	return
 }
 
 func convertToTime(unixTime int64) time.Time {
@@ -93,7 +119,7 @@ func getMeas(n withingsNotification) (weight float64) {
 		panic(err)
 	}
 	//TODO: Design how to call and add OAuth token
-	req.Header.Add("Authorization", "Bearer a4df0711085010b47f25e6ade4820f54ed8f08e7")
+	req.Header.Add("Authorization", "Bearer 10b91f0e42c9db3eed2db1ee1212fa6460ea12d8")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -106,26 +132,32 @@ func getMeas(n withingsNotification) (weight float64) {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Response status:", resp.Status)
+	log.Printf("Withings API Response status: %v", resp.Status)
 
-	//var jsonData interface{}
-	var meas measureResponse
-	json.Unmarshal(b, &meas)
+	var measResponse measureResponse
+	json.Unmarshal(b, &measResponse)
 
-	measuresGrpsList := meas.MB.MeasureGrps
+	weight = getWeight(measResponse)
+
+	return
+}
+
+func getWeight(mr measureResponse) (weight float64) {
+	measuresGrpsList := mr.MB.MeasureGrps
 	sort.Slice(measuresGrpsList, func(i, j int) bool {
 		return measuresGrpsList[i].Created > measuresGrpsList[j].Created
 	})
-
+	// log.Printf("Measure GRPS List: %v", measuresGrpsList)
 	recentMeasures := measuresGrpsList[0].Measures[0]
 
 	weight = calculateWeight(recentMeasures)
 	return
 }
 
-func calculateWeight(m measures) (weight float64) {
-	// TODO: look up how to round to nearest tenth
-	return float64(m.Value) * math.Pow10(m.Unit)
+func calculateWeight(m measures) (roundedWeight float64) {
+	weight := float64(m.Value) * math.Pow10(m.Unit)
+	roundedWeight = math.Ceil(weight*100) / 100
+	return
 }
 
 func main() {
