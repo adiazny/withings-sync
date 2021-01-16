@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +62,7 @@ func withingsNotificationHandler(w http.ResponseWriter, r *http.Request) {
 		weight := getMeas(notification)
 		fmt.Fprintf(w, "Weight: %v", weight)
 		fmt.Println("User Weight (kg):", weight)
+		updateStravaWeight(weight)
 	default:
 		fmt.Fprintf(w, "Only GET, HEAD and POST allowed")
 	}
@@ -103,14 +103,12 @@ func convertToTime(unixTime int64) time.Time {
 }
 
 func getMeas(n withingsNotification) (weight float64) {
-
 	client := &http.Client{}
 
 	formData := url.Values{
-		"action":    {"getmeas"},
-		"meastype":  {"1"},
-		"starttime": {"n.StartDate"},
-		"endtime":   {"n.EndDate"},
+		"action":     {"getmeas"},
+		"meastype":   {"1"},
+		"lastupdate": {"n.StartDate"},
 	}
 	encodedFormData := formData.Encode()
 
@@ -119,7 +117,7 @@ func getMeas(n withingsNotification) (weight float64) {
 		panic(err)
 	}
 	//TODO: Design how to call and add OAuth token
-	req.Header.Add("Authorization", "Bearer 10b91f0e42c9db3eed2db1ee1212fa6460ea12d8")
+	req.Header.Add("Authorization", "Bearer XXXX")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -132,25 +130,17 @@ func getMeas(n withingsNotification) (weight float64) {
 		log.Fatal(err)
 	}
 
-	log.Printf("Withings API Response status: %v", resp.Status)
-
 	var measResponse measureResponse
 	json.Unmarshal(b, &measResponse)
 
 	weight = getWeight(measResponse)
-
 	return
 }
 
 func getWeight(mr measureResponse) (weight float64) {
 	measuresGrpsList := mr.MB.MeasureGrps
-	sort.Slice(measuresGrpsList, func(i, j int) bool {
-		return measuresGrpsList[i].Created > measuresGrpsList[j].Created
-	})
-	// log.Printf("Measure GRPS List: %v", measuresGrpsList)
-	recentMeasures := measuresGrpsList[0].Measures[0]
-
-	weight = calculateWeight(recentMeasures)
+	lastUpdateMeasures := measuresGrpsList[0].Measures[0]
+	weight = calculateWeight(lastUpdateMeasures)
 	return
 }
 
@@ -158,6 +148,29 @@ func calculateWeight(m measures) (roundedWeight float64) {
 	weight := float64(m.Value) * math.Pow10(m.Unit)
 	roundedWeight = math.Ceil(weight*100) / 100
 	return
+}
+
+func updateStravaWeight(weight float64) {
+	urlString := "https://www.strava.com/api/v3/athlete?weight="
+	weightString := strconv.FormatFloat(weight, 'f', 2, 64)
+
+	client := &http.Client{}
+
+	req, err := http.NewRequest("PUT", urlString+weightString, strings.NewReader(""))
+	if err != nil {
+		panic(err)
+	}
+	//TODO: Design how to call and add OAuth token
+	req.Header.Add("Authorization", "Bearer XXXX")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	log.Printf("Strava PUT Response Status: %v", resp.Status)
+
 }
 
 func main() {
