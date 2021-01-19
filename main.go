@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -42,6 +43,7 @@ type measureBody struct {
 type measureResponse struct {
 	Status int         `json:"status"`
 	MB     measureBody `json:"body"`
+	Error  string      `json:"error"`
 }
 
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
@@ -58,11 +60,22 @@ func withingsNotificationHandler(w http.ResponseWriter, r *http.Request) {
 		notification, err := handleNotificationRequest(r)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
+			return
 		}
-		weight := getMeas(notification)
+		// Pull weight from Withings API
+		weight, err := getMeas(notification)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		// Update weight in Strava
+		err = updateStravaWeight(weight)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		fmt.Fprintf(w, "Weight: %v", weight)
 		fmt.Println("User Weight (kg):", weight)
-		updateStravaWeight(weight)
 	default:
 		fmt.Fprintf(w, "Only GET, HEAD and POST allowed")
 	}
@@ -102,7 +115,7 @@ func convertToTime(unixTime int64) time.Time {
 	return time
 }
 
-func getMeas(n withingsNotification) (weight float64) {
+func getMeas(n withingsNotification) (weight float64, err error) {
 	client := &http.Client{}
 
 	formData := url.Values{
@@ -114,14 +127,18 @@ func getMeas(n withingsNotification) (weight float64) {
 
 	req, err := http.NewRequest("POST", "https://wbsapi.withings.net/measure", strings.NewReader(encodedFormData))
 	if err != nil {
-		panic(err)
+		log.Printf("NewRequest Log Err: %v\n", err)
+		return weight, fmt.Errorf("Error: %v", err)
 	}
+
 	//TODO: Design how to call and add OAuth token
 	req.Header.Add("Authorization", "Bearer XXXX")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		log.Printf("client.Do Log Err: %v\n", err)
+		return weight, fmt.Errorf("Error: %v", err)
+
 	}
 	defer resp.Body.Close()
 
@@ -133,12 +150,21 @@ func getMeas(n withingsNotification) (weight float64) {
 	var measResponse measureResponse
 	json.Unmarshal(b, &measResponse)
 
-	weight = getWeight(measResponse)
+	fmt.Println(measResponse.Status)
+
+	if measResponse.Status != 0 {
+		return weight, fmt.Errorf("Error: %v. Status "+strconv.Itoa(measResponse.Status), measResponse.Error)
+	}
+
+	weight, err = getWeight(measResponse)
 	return
 }
 
-func getWeight(mr measureResponse) (weight float64) {
+func getWeight(mr measureResponse) (weight float64, err error) {
 	measuresGrpsList := mr.MB.MeasureGrps
+	if len(measuresGrpsList) == 0 {
+		return weight, errors.New("No Measures Found")
+	}
 	lastUpdateMeasures := measuresGrpsList[0].Measures[0]
 	weight = calculateWeight(lastUpdateMeasures)
 	return
@@ -150,7 +176,8 @@ func calculateWeight(m measures) (roundedWeight float64) {
 	return
 }
 
-func updateStravaWeight(weight float64) {
+func updateStravaWeight(weight float64) error {
+	var err error
 	urlString := "https://www.strava.com/api/v3/athlete?weight="
 	weightString := strconv.FormatFloat(weight, 'f', 2, 64)
 
@@ -158,18 +185,26 @@ func updateStravaWeight(weight float64) {
 
 	req, err := http.NewRequest("PUT", urlString+weightString, strings.NewReader(""))
 	if err != nil {
-		panic(err)
+		log.Printf("NewRequest Log Err: %v\n", err)
+		return fmt.Errorf("Error: %v", err)
 	}
 	//TODO: Design how to call and add OAuth token
 	req.Header.Add("Authorization", "Bearer XXXX")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		log.Printf("client.Do Log Err: %v\n", err)
+		return fmt.Errorf("Error: %v", err)
+
 	}
 	defer resp.Body.Close()
 
 	log.Printf("Strava PUT Response Status: %v", resp.Status)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Strava Error: %v", resp.Status)
+	}
+
+	return err
 
 }
 
