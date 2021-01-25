@@ -9,9 +9,12 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/adiazny/withings-sync/internal/providers/withings"
 )
 
 type withingsNotification struct {
@@ -116,6 +119,20 @@ func convertToTime(unixTime int64) time.Time {
 }
 
 func getMeas(n withingsNotification) (weight float64, err error) {
+
+	c := new(withings.Config)
+	c.ClientID = os.Getenv("WITHINGS_ID")
+	c.ClientSecret = os.Getenv("WITHINGS_SECRET")
+
+	currentRefreshToken := os.Getenv("WITHINGS_REFRESH")
+
+	withingsProvider := withings.NewProvider(c)
+
+	newAccess, newRefresh, err := withings.RefreshToken(withingsProvider, currentRefreshToken)
+	if err != nil {
+		log.Fatalf("Error Refreshing Access Token: %v", err)
+	}
+
 	client := &http.Client{}
 
 	formData := url.Values{
@@ -132,7 +149,7 @@ func getMeas(n withingsNotification) (weight float64, err error) {
 	}
 
 	//TODO: Design how to call and add OAuth token
-	req.Header.Add("Authorization", "Bearer XXXX")
+	req.Header.Add("Authorization", "Bearer "+newAccess)
 
 	resp, err := client.Do(req)
 	if err != nil {
