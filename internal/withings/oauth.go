@@ -15,14 +15,6 @@ const (
 	tokenURL = "https://wbsapi.withings.net/v2/oauth2"
 )
 
-type Config struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
-	CallbackURL  string
-	Scopes       []string
-}
-
 type provider struct {
 	clientID     string
 	clientSecret string
@@ -63,7 +55,7 @@ func NewProvider(c *Config) *provider {
 // TODO: Get Access Token
 
 // RefreshToken refreshes access token
-func RefreshToken(p *provider, rt string) (access, refresh string, err error) {
+func (p *provider) RefreshToken(rt string) (access, refresh string, err error) {
 	fmt.Println("Inside RefreshToken() Client ID:", p.clientID)
 	formData := url.Values{
 		"action":        {"requesttoken"},
@@ -104,34 +96,4 @@ func RefreshToken(p *provider, rt string) (access, refresh string, err error) {
 	refresh = refreshResp.Body.RefreshToken
 
 	return
-
 }
-
-// func main() {
-// 	fmt.Println("Hello")
-
-// 	c := new(Config)
-// 	c.ClientID = os.Getenv("WITHINGS_ID")
-// 	c.clientSecret = os.Getenv("WITHINGS_SECRET")
-
-// 	fmt.Printf("client_id %v\n", os.Getenv("WITHINGS_ID"))
-// 	fmt.Printf("client_secret %v\n", os.Getenv("WITHINGS_SECRET"))
-
-// 	currentRefreshToken := os.Getenv("WITHINGS_REFRESH")
-// 	fmt.Printf("Current Refresh Token: %v\n", currentRefreshToken)
-
-// 	withingsProvider := NewProvider(c)
-
-// 	newAccess, newRefresh, err := RefreshToken(withingsProvider, currentRefreshToken)
-// 	if err != nil {
-// 		log.Fatalf("Error Refreshing Access Token: %v", err)
-// 	}
-// 	fmt.Printf("New Access Token: %v\n", newAccess)
-// 	fmt.Printf("New Refresh Token: %v\n", newRefresh)
-
-// 	os.Setenv("WITHINGS_REFRESH", newRefresh)
-// 	fmt.Printf("New Refresh Env Var: %v\n", os.Getenv("WITHINGS_REFRESH"))
-// 	os.Setenv("WITHINGS_TEST", "TEST12345")
-// 	fmt.Printf("New TEST Env Var: %v\n", os.Getenv("WITHINGS_TEST"))
-
-// }

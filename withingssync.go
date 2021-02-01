@@ -10,10 +10,5 @@ import (
 func main() {
 	log.Println("Starting Withings-Sync Application...")
 
-	http.HandleFunc("/about", api.AboutHandler)
-
-	http.HandleFunc("/callback", api.WithingsNotificationHandler)
-
-	log.Fatal(http.ListenAndServe(":8090", nil))
-
+	log.Fatal(http.ListenAndServe(":8090", api.NewServer()))
 }

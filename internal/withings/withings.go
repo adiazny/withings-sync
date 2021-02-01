@@ -9,10 +9,19 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 )
+
+// Config Struct
+type Config struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+	CallbackURL  string
+	Scopes       []string
+	RefreshToken string
+}
 
 // Notification struct defines body of callback request
 type Notification struct {
@@ -64,19 +73,13 @@ func NotificationStruct(uv url.Values) (notification Notification) {
 }
 
 // GetMeas calls withings api HTTP POST to get user's weight (kg)
-func GetMeas(n Notification) (weight float64, err error) {
+func GetMeas(n Notification, c *Config) (weight float64, err error) {
 
-	c := new(Config)
-	c.ClientID = os.Getenv("WITHINGS_ID")
-	c.ClientSecret = os.Getenv("WITHINGS_SECRET")
+	wp := NewProvider(c)
 
-	currentRefreshToken := os.Getenv("WITHINGS_REFRESH")
-
-	withingsProvider := NewProvider(c)
-
-	newAccess, _, err := RefreshToken(withingsProvider, currentRefreshToken)
+	newAccess, _, err := wp.RefreshToken(c.RefreshToken)
 	if err != nil {
-		log.Fatalf("Error Refreshing Access Token: %v", err)
+		log.Printf("Error Refreshing Access Token: %v", err)
 	}
 
 	client := &http.Client{}
