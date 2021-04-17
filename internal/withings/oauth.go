@@ -11,17 +11,28 @@ import (
 )
 
 const (
-	authURL  = "https://account.withings.com/oauth2_user/authorize2"
-	tokenURL = "https://wbsapi.withings.net/v2/oauth2"
+	authURL          = "https://account.withings.com/oauth2_user/authorize2"
+	withingsTokenURL = "https://wbsapi.withings.net/v2/oauth2"
+	stravaTokenURL   = "https://www.strava.com/oauth/token"
 )
 
+// Config Struct
+type Config struct {
+	WithingsClientID     string
+	WithingsClientSecret string
+	RedirectURL          string
+	CallbackURL          string
+	Scopes               []string
+	WithingsRefreshToken string
+	StravaClientID       string
+	StravaClientSecret   string
+	StravaRefreshToken   string
+}
+
 type provider struct {
-	clientID     string
-	clientSecret string
 	providerName string
-	config       Config
+	config       *Config
 	httpClient   *http.Client
-	callbackURL  string
 }
 
 type refreshBody struct {
@@ -33,40 +44,57 @@ type refreshBody struct {
 	TokenType    string `json:"token_type"`
 }
 
-type refreshResponse struct {
+type withingsRefreshResponse struct {
 	Status int         `json:"status"`
 	Body   refreshBody `json:"body"`
 	Error  string      `json:"error"`
 }
 
-// NewProvider creates new withings provider
-func NewProvider(c *Config) *provider {
-	p := new(provider)
-	p.providerName = "withings"
-	p.clientID = c.ClientID
-	p.clientSecret = c.ClientSecret
-	p.callbackURL = c.CallbackURL
-	p.httpClient = http.DefaultClient
+type stravaRefreshResponse struct {
+	TokenType    string `json:"token_type"`
+	AccesToken   string `json:"access_token"`
+	ExpiresAt    int    `json:"expires_at"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+}
 
+// NewProvider creates new withings provider
+func NewProvider(name string, c *Config) *provider {
+	p := new(provider)
+	p.providerName = name
+	p.config = c
+	p.httpClient = http.DefaultClient
 	return p
 }
 
-// TODO: Authorize
-// TODO: Get Access Token
-
 // RefreshToken refreshes access token
 func (p *provider) RefreshToken(rt string) (access, refresh string, err error) {
-	fmt.Println("Inside RefreshToken() Client ID:", p.clientID)
-	formData := url.Values{
-		"action":        {"requesttoken"},
-		"grant_type":    {"authorization_code"},
-		"client_id":     {p.clientID},
-		"client_secret": {p.clientSecret},
-		"refresh_token": {rt},
+	log.Printf("Provider: %s Inside RefreshToken()", p.providerName)
+
+	var tokenURL string
+	var formData url.Values
+
+	switch p.providerName {
+	case "withings":
+		tokenURL = withingsTokenURL
+		formData = url.Values{
+			"action":        {"requesttoken"},
+			"grant_type":    {"authorization_code"},
+			"client_id":     {p.config.WithingsClientID},
+			"client_secret": {p.config.WithingsClientSecret},
+			"refresh_token": {rt},
+		}
+	case "strava":
+		tokenURL = stravaTokenURL
+		formData = url.Values{
+			"grant_type":    {"refresh_token"},
+			"client_id":     {p.config.StravaClientID},
+			"client_secret": {p.config.StravaClientSecret},
+			"refresh_token": {rt},
+		}
 	}
 
 	encodedFormData := formData.Encode()
-	fmt.Println("Inside RefreshToken() EncodedFormData:", encodedFormData)
 
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(encodedFormData))
 	if err != nil {
@@ -80,20 +108,29 @@ func (p *provider) RefreshToken(rt string) (access, refresh string, err error) {
 		return access, refresh, fmt.Errorf("Error: %v", err)
 	}
 	defer resp.Body.Close()
-	fmt.Println(resp.StatusCode)
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var refreshResp refreshResponse
-	json.Unmarshal(b, &refreshResp)
+	switch p.providerName {
+	case "withings":
+		var withingsRefreshResp withingsRefreshResponse
+		json.Unmarshal(b, &withingsRefreshResp)
+		log.Printf("RefreshResponse: %+v\n", withingsRefreshResp)
+		access = withingsRefreshResp.Body.AccessToken
+		refresh = withingsRefreshResp.Body.RefreshToken
 
-	fmt.Printf("RefreshResponse Status: %v\n", refreshResp.Status)
-	fmt.Printf("RefreshResponse: %+v\n", refreshResp)
-	access = refreshResp.Body.AccessToken
-	refresh = refreshResp.Body.RefreshToken
-
+		return
+	case "strava":
+		var stravaRefreshResp stravaRefreshResponse
+		json.Unmarshal(b, &stravaRefreshResp)
+		log.Printf("RefreshResponse: %+v\n", stravaRefreshResp)
+		access = stravaRefreshResp.AccesToken
+		refresh = stravaRefreshResp.RefreshToken
+		return
+	}
 	return
+
 }

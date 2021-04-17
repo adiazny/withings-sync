@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/adiazny/withings-sync/internal/withings"
 )
 
-// UpdateWeight will make strava api HTTP PUT to update user's weight
-func UpdateWeight(weight float64) error {
+// UpdateWeight will perform a PUT request to update user's weight
+func UpdateWeight(weight float64, c *withings.Config) error {
+	sp := withings.NewProvider("strava", c)
 	var err error
 	urlString := "https://www.strava.com/api/v3/athlete?weight="
 	weightString := strconv.FormatFloat(weight, 'f', 2, 64)
@@ -21,8 +24,10 @@ func UpdateWeight(weight float64) error {
 		log.Printf("NewRequest Log Err: %v\n", err)
 		return fmt.Errorf("Error: %v", err)
 	}
-	//TODO: Design how to call and add OAuth token
-	req.Header.Add("Authorization", "Bearer XXXX")
+
+	access, _, _ := sp.RefreshToken(c.StravaRefreshToken)
+	bearer := fmt.Sprintf("Bearer %s", access)
+	req.Header.Add("Authorization", bearer)
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -38,13 +38,13 @@ func (s *Server) handleWithingsCallback() http.HandlerFunc {
 				return
 			}
 			// Pull weight from Withings API
-			weight, err := withings.GetMeas(notification)
+			weight, err := withings.GetMeas(notification, s.config)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
 			// Update weight in Strava
-			err = strava.UpdateWeight(weight)
+			err = strava.UpdateWeight(weight, s.config)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -65,6 +65,9 @@ func NewServer() *Server {
 	}
 	s.routes()
 
+	log.Printf("WITHINGS_REFRESH_TOKEN= %s", s.config.WithingsRefreshToken)
+	log.Printf("STRAVA_REFRESH_TOKEN= %s", s.config.StravaRefreshToken)
+	log.Printf("STRAVA_CLIENT_ID= %s", s.config.StravaClientID)
 	log.Println("Withings-Sync Application Started Successfully")
 	return s
 }
@@ -73,11 +76,14 @@ func loadConfig() *withings.Config {
 
 	log.Println("Loading configuration from env vars.")
 	return &withings.Config{
-		ClientID:     getEnvVar("WITHINGS_CLIENT_ID"),
-		ClientSecret: getEnvVar("WITHINGS_CLIENT_SECRET"),
-		RedirectURL:  getEnvVar("WITHINGS_REDIRECT"),
-		CallbackURL:  getEnvVar("WITHINGS_CALLBACK"),
-		RefreshToken: getEnvVar("WITHINGS_REFRESH_TOKEN"),
+		WithingsClientID:     getEnvVar("WITHINGS_CLIENT_ID"),
+		WithingsClientSecret: getEnvVar("WITHINGS_CLIENT_SECRET"),
+		RedirectURL:          getEnvVar("WITHINGS_REDIRECT"),
+		CallbackURL:          getEnvVar("WITHINGS_CALLBACK"),
+		WithingsRefreshToken: getEnvVar("WITHINGS_REFRESH_TOKEN"),
+		StravaClientID:       getEnvVar("STRAVA_CLIENT_ID"),
+		StravaClientSecret:   getEnvVar("STRAVA_CLIENT_SECRET"),
+		StravaRefreshToken:   getEnvVar("STRAVA_REFRESH_TOKEN"),
 	}
 }
 

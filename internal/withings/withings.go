@@ -13,16 +13,6 @@ import (
 	"strings"
 )
 
-// Config Struct
-type Config struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
-	CallbackURL  string
-	Scopes       []string
-	RefreshToken string
-}
-
 // Notification struct defines body of callback request
 type Notification struct {
 	UserID    int   `json:"userid"`
@@ -75,9 +65,9 @@ func NotificationStruct(uv url.Values) (notification Notification) {
 // GetMeas calls withings api HTTP POST to get user's weight (kg)
 func GetMeas(n Notification, c *Config) (weight float64, err error) {
 
-	wp := NewProvider(c)
+	wp := NewProvider("withings", c)
 
-	newAccess, _, err := wp.RefreshToken(c.RefreshToken)
+	newAccess, _, err := wp.RefreshToken(c.WithingsRefreshToken)
 	if err != nil {
 		log.Printf("Error Refreshing Access Token: %v", err)
 	}
